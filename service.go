@@ -12,7 +12,7 @@ import (
 var ErrTooManyRetries = errors.New("too many retries")
 
 type Service[T any] struct {
-	Repository   Repository[T]
+	Repository   *Repository[T]
 	RetryTimeout time.Duration
 	MaxRetries   int
 }
