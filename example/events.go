@@ -1,0 +1,29 @@
+package main
+
+type PatientCreated struct {
+	ID   string
+	Ward int
+	Name string
+	Age  int
+}
+
+func (pc PatientCreated) Apply(p *Patient) {
+	p.id = pc.ID
+	p.ward = pc.Ward
+	p.name = pc.Name
+	p.age = pc.Age
+}
+
+type PatientTransferred struct {
+	NewWard int
+}
+
+func (pc PatientTransferred) Apply(p *Patient) {
+	p.ward = pc.NewWard
+}
+
+type PatientDischarged struct{}
+
+func (PatientDischarged) Apply(p *Patient) {
+	p.discharged = true
+}
