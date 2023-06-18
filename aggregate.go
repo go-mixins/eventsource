@@ -1,5 +1,7 @@
 package eventsource
 
+import "context"
+
 type Aggregate[T any] struct {
 	id      string
 	data    T
@@ -18,8 +20,19 @@ func (a *Aggregate[T]) On(e Event[T], isNew bool) {
 	}
 }
 
-func (a *Aggregate[T]) Execute(cmd Command[T]) error {
-	evts, err := cmd.Execute(a.data)
+type aggregateIDKey struct{}
+
+func (a *Aggregate[T]) withID(ctx context.Context) context.Context {
+	return context.WithValue(ctx, aggregateIDKey{}, a.id)
+}
+
+func AggregateID(ctx context.Context) string {
+	id, _ := ctx.Value(aggregateIDKey{}).(string)
+	return id
+}
+
+func (a *Aggregate[T]) Execute(ctx context.Context, cmd Command[T]) error {
+	evts, err := cmd.Execute(a.withID(ctx), a.data)
 	if err != nil {
 		return err
 	}

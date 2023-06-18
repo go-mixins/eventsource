@@ -6,6 +6,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/rs/xid"
+
 	"github.com/go-mixins/eventsource"
 	"github.com/go-mixins/eventsource/driver"
 )
@@ -33,16 +35,17 @@ func main() {
 	es.Repository.Subscribe(func(n eventsource.Notification[Patient]) {
 		log.Printf("signaled %T on %s: %+v", n.Event, n.AggregateID, n.Event)
 	})
-	if err := es.Execute(ctx, "1", Create{Ward: 1, Name: "Vasya", Age: 21}); err != nil {
+	id := xid.New().String()
+	if err := es.Execute(ctx, id, Create{Ward: 1, Name: "Vasya", Age: 21}); err != nil {
 		log.Fatal(err)
 	}
-	if err := es.Execute(ctx, "1", Transfer{NewWard: 2}); err != nil {
+	if err := es.Execute(ctx, id, Transfer{NewWard: 2}); err != nil {
 		log.Fatal(err)
 	}
-	if err := es.Execute(ctx, "1", Discharge{}); err != nil {
+	if err := es.Execute(ctx, id, Discharge{}); err != nil {
 		log.Fatal(err)
 	}
-	if err := es.Execute(ctx, "1", Transfer{NewWard: 3}); errors.Is(err, eventsource.ErrCommandAborted) {
+	if err := es.Execute(ctx, id, Transfer{NewWard: 3}); errors.Is(err, eventsource.ErrCommandAborted) {
 		log.Print("not tranferring discharged patient")
 	} else if err != nil {
 		log.Fatal(err)

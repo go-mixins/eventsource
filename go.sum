@@ -2,3 +2,5 @@ github.com/andviro/go-events v0.0.1 h1:+GePiR6KsEWcl1gPxUNEmmIg1gnERVSC3ytDWlc9D
 github.com/andviro/go-events v0.0.1/go.mod h1:r7d1Uq8YG730oEn48OzPhRVumNG1PxlICZ8FZwLIp0Y=
 github.com/imkira/go-observer/v2 v2.0.0-20220914100105-7307ba097553 h1:GzyDhJMMXhhflczwGs3hj3YULGiS/rJjnMKDWsdGpN8=
 github.com/imkira/go-observer/v2 v2.0.0-20220914100105-7307ba097553/go.mod h1:XCscqBi1KKh7GcVDDAdkT/Cf6WDjnDAA1XM3nwmA0Ag=
+github.com/rs/xid v1.5.0 h1:mKX4bl4iPYJtEIxp6CYiUuLQ/8DYMoz0PUdtGgMFRVc=
+github.com/rs/xid v1.5.0/go.mod h1:trrq9SKmegXys3aeAKXMUTdJsYXVwGY3RLcfgqegfbg=

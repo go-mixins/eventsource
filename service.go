@@ -37,7 +37,7 @@ func (s *Service[T]) Execute(ctx context.Context, id string, cmd Command[T]) (rE
 		if err != nil {
 			return err
 		}
-		if err := ag.Execute(cmd); err != nil {
+		if err := ag.Execute(ctx, cmd); err != nil {
 			return err
 		} else if err := s.Repository.Save(ctx, ag); errors.Is(err, driver.ErrConcurrency) {
 			time.Sleep(s.retryTimeout())
