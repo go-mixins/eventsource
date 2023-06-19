@@ -44,7 +44,7 @@ func (r *Repository[T]) RegisterEvents(evts ...Event[T]) error {
 		if t.Kind() == reflect.Pointer {
 			return fmt.Errorf("requred non-pointer type for Event[T]")
 		}
-		r.registry[fmt.Sprintf("%T", e)] = t
+		r.registry[t.Name()] = t
 	}
 	return nil
 }
@@ -107,6 +107,7 @@ func (es *Repository[T]) Save(ctx context.Context, ag *Aggregate[T]) (rErr error
 	evts := ag.Events()
 	evtDTOs := make([]driver.Event, len(evts))
 	id, version := ag.ID(), ag.Version()
+
 	for i, evt := range evts {
 		data, err := es.codec().Marshal(evt)
 		if err != nil {
@@ -115,7 +116,7 @@ func (es *Repository[T]) Save(ctx context.Context, ag *Aggregate[T]) (rErr error
 		evtDTOs[i] = driver.Event{
 			AggregateID:      id,
 			AggregateVersion: version,
-			Type:             fmt.Sprintf("%T", evt),
+			Type:             reflect.TypeOf(evt).Name(),
 			Payload:          data,
 		}
 		notifications = append(notifications, Notification[T]{

@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/rs/xid"
+	"gorm.io/driver/sqlite"
 
 	"github.com/go-mixins/eventsource"
-	"github.com/go-mixins/eventsource/driver"
+	"github.com/go-mixins/eventsource/driver/gorm"
 )
 
 type Patient struct {
@@ -25,9 +26,13 @@ func (p Patient) ID() string {
 }
 
 func main() {
+	backend := gorm.NewBackend[Patient](sqlite.Open("example.db"))
+	if err := backend.Connect(true); err != nil {
+		panic(err)
+	}
 	es := eventsource.Service[Patient]{
 		Repository: &eventsource.Repository[Patient]{
-			Backend: &driver.InMemory{},
+			Backend: backend,
 		},
 	}
 	ctx := context.TODO()

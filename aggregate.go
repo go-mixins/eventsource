@@ -22,7 +22,7 @@ func (a *Aggregate[T]) On(e Event[T], isNew bool) {
 
 type aggregateIDKey struct{}
 
-func (a *Aggregate[T]) withID(ctx context.Context) context.Context {
+func (a *Aggregate[T]) context(ctx context.Context) context.Context {
 	return context.WithValue(ctx, aggregateIDKey{}, a.id)
 }
 
@@ -32,7 +32,7 @@ func AggregateID(ctx context.Context) string {
 }
 
 func (a *Aggregate[T]) Execute(ctx context.Context, cmd Command[T]) error {
-	evts, err := cmd.Execute(a.withID(ctx), a.data)
+	evts, err := cmd.Execute(a.context(ctx), a.data)
 	if err != nil {
 		return err
 	}
