@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	g "github.com/go-mixins/gorm/v3"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"github.com/go-mixins/eventsource/driver"
@@ -35,11 +36,15 @@ func (b *Backend) Connect(migrate bool) error {
 	return b.Backend.Connect()
 }
 
+func (b *Backend) Codec() driver.Codec {
+	return driver.JSON{}
+}
+
 type Event struct {
 	AggregateID      string `gorm:"primaryKey"`
 	AggregateVersion int    `gorm:"primaryKey;autoIncrement:false"`
 	Type             string
-	Payload          []byte `gorm:"type:json"`
+	Payload          datatypes.JSON
 }
 
 func (b *Backend) scope() func(db *gorm.DB) *gorm.DB {

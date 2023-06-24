@@ -22,14 +22,8 @@ type EventNotifier[T any] interface {
 	Notify(...Notification[T]) error
 }
 
-type Codec interface {
-	Unmarshal(data []byte, dest interface{}) error
-	Marshal(src interface{}) ([]byte, error)
-}
-
 type Repository[T any] struct {
 	Backend driver.Backend
-	Codec   Codec
 
 	notifier events.Event[Notification[T]]
 	registry map[string]reflect.Type
@@ -62,13 +56,6 @@ func (r *Repository[T]) instantiate(eventType string) (Event[T], bool) {
 	return res, ok
 }
 
-func (r *Repository[T]) codec() Codec {
-	if r.Codec != nil {
-		return r.Codec
-	}
-	return driver.JSON{}
-}
-
 func (es *Repository[T]) Load(ctx context.Context, id string) (*Aggregate[T], error) {
 	evtDTOs, err := es.Backend.Load(ctx, id)
 	if err != nil {
@@ -80,7 +67,7 @@ func (es *Repository[T]) Load(ctx context.Context, id string) (*Aggregate[T], er
 		if !ok {
 			return nil, fmt.Errorf("intantiating event %s: %w", e.Type, ErrUnknownEventType)
 		}
-		if err := es.codec().Unmarshal(e.Payload, &evt); err != nil {
+		if err := es.Backend.Codec().Unmarshal(e.Payload, &evt); err != nil {
 			return nil, err
 		}
 		evts[i] = evt
@@ -109,7 +96,7 @@ func (es *Repository[T]) Save(ctx context.Context, ag *Aggregate[T]) (rErr error
 	id, version := ag.ID(), ag.Version()
 
 	for i, evt := range evts {
-		data, err := es.codec().Marshal(evt)
+		data, err := es.Backend.Codec().Marshal(evt)
 		if err != nil {
 			return err
 		}
