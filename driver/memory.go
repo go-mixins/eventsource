@@ -5,26 +5,26 @@ import (
 	"sync"
 )
 
-type InMemory struct {
-	store    map[string][]Event
-	evtsSeen map[string]map[int]struct{}
+type InMemory[A comparable] struct {
+	store    map[A][]Event[A]
+	evtsSeen map[A]map[int]struct{}
 	mu       sync.RWMutex
 }
 
-func (m *InMemory) Load(ctx context.Context, id string) ([]Event, error) {
+func (m *InMemory[A]) Load(ctx context.Context, id A) ([]Event[A], error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.store[id], nil
 }
 
-func (m *InMemory) Save(ctx context.Context, events []Event) error {
+func (m *InMemory[A]) Save(ctx context.Context, events []Event[A]) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.evtsSeen == nil {
-		m.evtsSeen = make(map[string]map[int]struct{})
+		m.evtsSeen = make(map[A]map[int]struct{})
 	}
 	if m.store == nil {
-		m.store = make(map[string][]Event)
+		m.store = make(map[A][]Event[A])
 	}
 	for _, e := range events {
 		evtsSeen := m.evtsSeen[e.AggregateID]

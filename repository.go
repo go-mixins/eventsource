@@ -12,24 +12,31 @@ import (
 
 var ErrUnknownEventType = errors.New("unknown event type")
 
-type Notification[T any] struct {
-	AggregateID      string
+type Repository[T, A any] struct {
+	Backend driver.Backend[A]
+
+	notifier events.Event[Notification[T, A]]
+	registry map[string]reflect.Type
+}
+
+// NewRepository creates Repository with most common case: string IDs
+func NewRepository[T any](b driver.Backend[string]) *Repository[T, string] {
+	return &Repository[T, string]{
+		Backend: b,
+	}
+}
+
+type Notification[T, A any] struct {
+	AggregateID      A
 	AggregateVersion int
 	Event            Event[T]
 }
 
-type EventNotifier[T any] interface {
-	Notify(...Notification[T]) error
+type EventNotifier[T, A any] interface {
+	Notify(...Notification[T, A]) error
 }
 
-type Repository[T any] struct {
-	Backend driver.Backend
-
-	notifier events.Event[Notification[T]]
-	registry map[string]reflect.Type
-}
-
-func (r *Repository[T]) RegisterEvents(evts ...Event[T]) error {
+func (r *Repository[T, A]) RegisterEvents(evts ...Event[T]) error {
 	if r.registry == nil {
 		r.registry = make(map[string]reflect.Type)
 	}
@@ -43,11 +50,11 @@ func (r *Repository[T]) RegisterEvents(evts ...Event[T]) error {
 	return nil
 }
 
-func (r *Repository[T]) Subscribe(h func(n Notification[T])) (unsub func()) {
+func (r *Repository[T, A]) Subscribe(h func(n Notification[T, A])) (unsub func()) {
 	return r.notifier.Handle(h)
 }
 
-func (r *Repository[T]) instantiate(eventType string) (Event[T], bool) {
+func (r *Repository[T, A]) instantiate(eventType string) (Event[T], bool) {
 	t, ok := r.registry[eventType]
 	if !ok {
 		return nil, ok
@@ -56,7 +63,7 @@ func (r *Repository[T]) instantiate(eventType string) (Event[T], bool) {
 	return res, ok
 }
 
-func (es *Repository[T]) Load(ctx context.Context, id string) (*Aggregate[T], error) {
+func (es *Repository[T, A]) Load(ctx context.Context, id A) (*Aggregate[T, A], error) {
 	evtDTOs, err := es.Backend.Load(ctx, id)
 	if err != nil {
 		return nil, err
@@ -72,7 +79,7 @@ func (es *Repository[T]) Load(ctx context.Context, id string) (*Aggregate[T], er
 		}
 		evts[i] = evt
 	}
-	res := &Aggregate[T]{
+	res := &Aggregate[T, A]{
 		id: id,
 	}
 	for _, e := range evts {
@@ -81,8 +88,8 @@ func (es *Repository[T]) Load(ctx context.Context, id string) (*Aggregate[T], er
 	return res, nil
 }
 
-func (es *Repository[T]) Save(ctx context.Context, ag *Aggregate[T]) (rErr error) {
-	var notifications []Notification[T]
+func (es *Repository[T, A]) Save(ctx context.Context, ag *Aggregate[T, A]) (rErr error) {
+	var notifications []Notification[T, A]
 	defer func() {
 		if rErr != nil {
 			return
@@ -92,7 +99,7 @@ func (es *Repository[T]) Save(ctx context.Context, ag *Aggregate[T]) (rErr error
 		}
 	}()
 	evts := ag.Events()
-	evtDTOs := make([]driver.Event, len(evts))
+	evtDTOs := make([]driver.Event[A], len(evts))
 	id, version := ag.ID(), ag.Version()
 
 	for i, evt := range evts {
@@ -100,13 +107,13 @@ func (es *Repository[T]) Save(ctx context.Context, ag *Aggregate[T]) (rErr error
 		if err != nil {
 			return err
 		}
-		evtDTOs[i] = driver.Event{
+		evtDTOs[i] = driver.Event[A]{
 			AggregateID:      id,
 			AggregateVersion: version,
 			Type:             reflect.TypeOf(evt).Name(),
 			Payload:          data,
 		}
-		notifications = append(notifications, Notification[T]{
+		notifications = append(notifications, Notification[T, A]{
 			AggregateID:      id,
 			AggregateVersion: version,
 			Event:            evt,

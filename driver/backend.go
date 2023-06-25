@@ -5,8 +5,8 @@ import (
 	"errors"
 )
 
-type Event struct {
-	AggregateID      string
+type Event[A any] struct {
+	AggregateID      A
 	AggregateVersion int
 	Type             string
 	Payload          []byte
@@ -20,8 +20,8 @@ type Codec interface {
 	Marshal(src interface{}) ([]byte, error)
 }
 
-type Backend interface {
-	Load(ctx context.Context, id string) ([]Event, error)
-	Save(ctx context.Context, events []Event) error
+type Backend[A any] interface {
+	Load(ctx context.Context, id A) ([]Event[A], error)
+	Save(ctx context.Context, events []Event[A]) error
 	Codec() Codec
 }

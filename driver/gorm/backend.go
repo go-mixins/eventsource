@@ -12,57 +12,57 @@ import (
 	"github.com/go-mixins/eventsource/driver"
 )
 
-type Backend struct {
+type Backend[A comparable] struct {
 	*g.Backend
 
 	name string
 }
 
-func NewBackend[T any](driver gorm.Dialector) *Backend {
+func NewBackend[T any, A comparable](driver gorm.Dialector) *Backend[A] {
 	var t T
 	gormBackend := g.Backend{Driver: driver}
-	res := &Backend{
+	res := &Backend[A]{
 		Backend: &gormBackend,
 		name:    reflect.TypeOf(t).Name(),
 	}
 	gormBackend.InitSchema = func(d *gorm.DB) error {
-		return d.Scopes(res.scope()).AutoMigrate(&Event{})
+		return d.Scopes(res.scope()).AutoMigrate(&Event[A]{})
 	}
 	return res
 }
 
-func (b *Backend) Connect(migrate bool) error {
+func (b *Backend[A]) Connect(migrate bool) error {
 	b.Migrate = migrate
 	return b.Backend.Connect()
 }
 
-func (b *Backend) Codec() driver.Codec {
+func (b *Backend[A]) Codec() driver.Codec {
 	return driver.JSON{}
 }
 
-type Event struct {
-	AggregateID      string `gorm:"primaryKey"`
-	AggregateVersion int    `gorm:"primaryKey;autoIncrement:false"`
+type Event[A comparable] struct {
+	AggregateID      A   `gorm:"primaryKey;autoIncrement:false"`
+	AggregateVersion int `gorm:"primaryKey;autoIncrement:false"`
 	Type             string
 	Payload          datatypes.JSON
 }
 
-func (b *Backend) scope() func(db *gorm.DB) *gorm.DB {
+func (b *Backend[A]) scope() func(db *gorm.DB) *gorm.DB {
 	return func(tx *gorm.DB) *gorm.DB {
 		tableName := tx.NamingStrategy.TableName(fmt.Sprintf("%s_events", b.name))
 		return tx.Table(tableName)
 	}
 }
 
-func (b *Backend) Load(ctx context.Context, id string) ([]driver.Event, error) {
+func (b *Backend[A]) Load(ctx context.Context, id string) ([]driver.Event[A], error) {
 	q := b.WithContext(ctx).DB.Scopes(b.scope())
-	var evts []Event
-	if err := q.Model(Event{}).Where(`aggregate_id = ?`, id).Find(&evts).Error; err != nil {
+	var evts []Event[A]
+	if err := q.Model(Event[A]{}).Where(`aggregate_id = ?`, id).Find(&evts).Error; err != nil {
 		return nil, err
 	}
-	res := make([]driver.Event, len(evts))
+	res := make([]driver.Event[A], len(evts))
 	for i, e := range evts {
-		res[i] = driver.Event{
+		res[i] = driver.Event[A]{
 			AggregateID:      e.AggregateID,
 			AggregateVersion: e.AggregateVersion,
 			Type:             e.Type,
@@ -72,14 +72,14 @@ func (b *Backend) Load(ctx context.Context, id string) ([]driver.Event, error) {
 	return res, nil
 }
 
-func (b *Backend) Save(ctx context.Context, events []driver.Event) (rErr error) {
+func (b *Backend[A]) Save(ctx context.Context, events []driver.Event[A]) (rErr error) {
 	tx := b.WithContext(ctx).Begin()
 	defer func() {
 		rErr = tx.End(rErr)
 	}()
-	q := tx.DB.Scopes(b.scope()).Model(&Event{})
+	q := tx.DB.Scopes(b.scope()).Model(&Event[A]{})
 	for _, e := range events {
-		err := q.Create(&Event{
+		err := q.Create(&Event[A]{
 			AggregateID:      e.AggregateID,
 			AggregateVersion: e.AggregateVersion,
 			Type:             e.Type,

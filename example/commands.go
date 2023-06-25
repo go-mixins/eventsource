@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 
 	"github.com/go-mixins/eventsource"
 )
@@ -14,8 +13,15 @@ type Create struct {
 }
 
 func (cp Create) Execute(ctx context.Context, p Patient) ([]eventsource.Event[Patient], error) {
-	log.Printf("processing %T for %s", cp, eventsource.AggregateID(ctx))
-	return []eventsource.Event[Patient]{PatientCreated(cp)}, nil
+	if p.id != "" {
+		return nil, eventsource.ErrCommandAborted
+	}
+	return []eventsource.Event[Patient]{PatientCreated{
+		ID:   eventsource.AggregateID[string](ctx),
+		Ward: cp.Ward,
+		Name: cp.Name,
+		Age:  cp.Age,
+	}}, nil
 }
 
 type Transfer struct {

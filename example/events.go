@@ -1,20 +1,20 @@
 package main
 
 type PatientCreated struct {
+	ID   string
 	Ward int
 	Name string
 	Age  int
 }
 
 func (pc PatientCreated) Apply(p *Patient) {
+	p.id = pc.ID
 	p.ward = pc.Ward
 	p.name = pc.Name
 	p.age = pc.Age
 }
 
-type PatientTransferred struct {
-	NewWard int
-}
+type PatientTransferred = Transfer
 
 func (pc PatientTransferred) Apply(p *Patient) {
 	p.ward = pc.NewWard

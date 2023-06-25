@@ -6,11 +6,11 @@ import (
 	"log"
 	"time"
 
-	"github.com/rs/xid"
 	"gorm.io/driver/sqlite"
 
 	"github.com/go-mixins/eventsource"
 	"github.com/go-mixins/eventsource/driver/gorm"
+	"github.com/rs/xid"
 )
 
 type Patient struct {
@@ -26,19 +26,15 @@ func (p Patient) ID() string {
 }
 
 func main() {
-	backend := gorm.NewBackend[Patient](sqlite.Open("example.db"))
+	backend := gorm.NewBackend[Patient, string](sqlite.Open("example.db"))
 	if err := backend.Connect(true); err != nil {
 		panic(err)
 	}
-	es := eventsource.Service[Patient]{
-		Repository: &eventsource.Repository[Patient]{
-			Backend: backend,
-		},
-	}
+	es := eventsource.NewService[Patient](eventsource.NewRepository[Patient](backend))
 	ctx := context.TODO()
 	es.Repository.RegisterEvents(PatientCreated{}, PatientTransferred{}, PatientDischarged{})
-	es.Repository.Subscribe(func(n eventsource.Notification[Patient]) {
-		log.Printf("signaled %T on %s: %+v", n.Event, n.AggregateID, n.Event)
+	es.Repository.Subscribe(func(n eventsource.Notification[Patient, string]) {
+		log.Printf("signaled %T on %v: %+v", n.Event, n.AggregateID, n.Event)
 	})
 	id := xid.New().String()
 	if err := es.Execute(ctx, id, Create{Ward: 1, Name: "Vasya", Age: 21}); err != nil {
