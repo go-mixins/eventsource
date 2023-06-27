@@ -1,14 +1,12 @@
 package main
 
 type PatientCreated struct {
-	ID   string
 	Ward int
 	Name string
 	Age  int
 }
 
 func (pc PatientCreated) Apply(p *Patient) {
-	p.id = pc.ID
 	p.ward = pc.Ward
 	p.name = pc.Name
 	p.age = pc.Age

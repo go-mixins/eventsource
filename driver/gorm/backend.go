@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	g "github.com/go-mixins/gorm/v3"
+	g "github.com/go-mixins/gorm/v4"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -34,6 +34,12 @@ func NewBackend[T any, A comparable](driver gorm.Dialector) *Backend[A] {
 func (b *Backend[A]) Connect(migrate bool) error {
 	b.Migrate = migrate
 	return b.Backend.Connect()
+}
+
+func (b *Backend[A]) WithDebug() *Backend[A] {
+	res := *b
+	res.Backend = res.Backend.WithDebug()
+	return &res
 }
 
 func (b *Backend[A]) Codec() driver.Codec {

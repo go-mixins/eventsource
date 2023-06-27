@@ -16,12 +16,7 @@ func (cp Create) Execute(ctx context.Context, p Patient) ([]eventsource.Event[Pa
 	if p.id != "" {
 		return nil, eventsource.ErrCommandAborted
 	}
-	return []eventsource.Event[Patient]{PatientCreated{
-		ID:   eventsource.AggregateID[string](ctx),
-		Ward: cp.Ward,
-		Name: cp.Name,
-		Age:  cp.Age,
-	}}, nil
+	return []eventsource.Event[Patient]{PatientCreated(cp)}, nil
 }
 
 type Transfer struct {
