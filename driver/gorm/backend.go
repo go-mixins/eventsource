@@ -18,22 +18,20 @@ type Backend[A comparable] struct {
 	name string
 }
 
-func NewBackend[T any, A comparable](driver gorm.Dialector) *Backend[A] {
+func NewBackend[T any, A comparable](gormBackend *g.Backend) *Backend[A] {
 	var t T
-	gormBackend := g.Backend{Driver: driver}
 	res := &Backend[A]{
-		Backend: &gormBackend,
+		Backend: gormBackend,
 		name:    reflect.TypeOf(t).Name(),
-	}
-	gormBackend.InitSchema = func(d *gorm.DB) error {
-		return d.Scopes(res.scope()).AutoMigrate(&Event[A]{})
 	}
 	return res
 }
 
 func (b *Backend[A]) Connect(migrate bool) error {
-	b.Migrate = migrate
-	return b.Backend.Connect()
+	if migrate {
+		return b.DB.Scopes(b.scope()).AutoMigrate(&Event[A]{})
+	}
+	return nil
 }
 
 func (b *Backend[A]) WithDebug() *Backend[A] {
@@ -60,10 +58,17 @@ func (b *Backend[A]) scope() func(db *gorm.DB) *gorm.DB {
 	}
 }
 
-func (b *Backend[A]) Load(ctx context.Context, id string) ([]driver.Event[A], error) {
+func (b *Backend[A]) Load(ctx context.Context, id string, fromVersion, toVersion int) ([]driver.Event[A], error) {
 	q := b.WithContext(ctx).DB.Scopes(b.scope())
 	var evts []Event[A]
-	if err := q.Model(Event[A]{}).Where(`aggregate_id = ?`, id).Find(&evts).Error; err != nil {
+	q = q.Model(Event[A]{}).Where(`aggregate_id = ?`, id)
+	if fromVersion != 0 {
+		q = q.Where(`aggregate_version >= ?`, fromVersion)
+	}
+	if toVersion != 0 {
+		q = q.Where(`aggregate_version < ?`, toVersion)
+	}
+	if err := q.Find(&evts).Error; err != nil {
 		return nil, err
 	}
 	res := make([]driver.Event[A], len(evts))

@@ -12,6 +12,7 @@ import (
 
 	"github.com/rs/xid"
 
+	g "github.com/go-mixins/gorm/v4"
 	"github.com/go-mixins/log/v2"
 
 	"github.com/carlmjohnson/versioninfo"
@@ -36,11 +37,13 @@ func main() {
 		AddSource: true,
 		Level:     slog.LevelDebug,
 	}))
-	ctx := log.WithAttrs(context.TODO(), []slog.Attr{
-		slog.String("version", versioninfo.Revision),
-	})
+	ctx := log.WithAttrs(context.TODO(), slog.String("version", versioninfo.Revision))
 	slog.SetDefault(slog.New(logger))
-	backend := gorm.NewBackend[Patient, string](sqlite.Open("example.db"))
+	gormBackend := &g.Backend{Driver: sqlite.Open("example.db")}
+	if err := gormBackend.Connect(); err != nil {
+		slog.ErrorCtx(ctx, "failed to connect DB", "error", err)
+	}
+	backend := gorm.NewBackend[Patient, string](gormBackend)
 	if err := backend.Connect(true); err != nil {
 		panic(err)
 	}

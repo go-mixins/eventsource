@@ -64,20 +64,9 @@ func (r *Repository[T, A]) instantiate(eventType string) (Event[T], bool) {
 }
 
 func (es *Repository[T, A]) Load(ctx context.Context, id A) (*Aggregate[T, A], error) {
-	evtDTOs, err := es.Backend.Load(ctx, id)
+	evts, err := es.GetEvents(ctx, id, 0, 0)
 	if err != nil {
-		return nil, err
-	}
-	evts := make([]Event[T], len(evtDTOs))
-	for i, e := range evtDTOs {
-		evt, ok := es.instantiate(e.Type)
-		if !ok {
-			return nil, fmt.Errorf("intantiating event %s: %w", e.Type, ErrUnknownEventType)
-		}
-		if err := es.Backend.Codec().Unmarshal(e.Payload, &evt); err != nil {
-			return nil, err
-		}
-		evts[i] = evt
+		return nil, fmt.Errorf("loading events for aggregate %v: %+v", id, err)
 	}
 	res := &Aggregate[T, A]{
 		id: id,
@@ -121,4 +110,23 @@ func (es *Repository[T, A]) Save(ctx context.Context, ag *Aggregate[T, A]) (rErr
 		version++
 	}
 	return es.Backend.Save(ctx, evtDTOs)
+}
+
+func (es *Repository[T, A]) GetEvents(ctx context.Context, id A, fromVersion, toVersion int) ([]Event[T], error) {
+	evtDTOs, err := es.Backend.Load(ctx, id, fromVersion, toVersion)
+	if err != nil {
+		return nil, err
+	}
+	evts := make([]Event[T], len(evtDTOs))
+	for i, e := range evtDTOs {
+		evt, ok := es.instantiate(e.Type)
+		if !ok {
+			return nil, fmt.Errorf("intantiating event %s: %w", e.Type, ErrUnknownEventType)
+		}
+		if err := es.Backend.Codec().Unmarshal(e.Payload, &evt); err != nil {
+			return nil, err
+		}
+		evts[i] = evt
+	}
+	return evts, nil
 }

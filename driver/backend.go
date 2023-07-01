@@ -21,7 +21,7 @@ type Codec interface {
 }
 
 type Backend[A any] interface {
-	Load(ctx context.Context, id A) ([]Event[A], error)
+	Load(ctx context.Context, id A, fromVersion, toVersion int) ([]Event[A], error)
 	Save(ctx context.Context, events []Event[A]) error
 	Codec() Codec
 }
