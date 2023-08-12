@@ -12,6 +12,8 @@ import (
 
 var ErrUnknownEventType = errors.New("unknown event type")
 
+// Repository stores and retrieves events for Aggregates of type T.
+// It also notifies subscribers on aggregate-related events.
 type Repository[T, A any] struct {
 	Backend driver.Backend[A]
 
@@ -26,16 +28,16 @@ func NewRepository[T any](b driver.Backend[string]) *Repository[T, string] {
 	}
 }
 
+// Notification is sent to event subscribers
 type Notification[T, A any] struct {
 	AggregateID      A
 	AggregateVersion int
-	Event            Event[T]
+	Type             string
+	Payload          Event[T]
 }
 
-type EventNotifier[T, A any] interface {
-	Notify(...Notification[T, A]) error
-}
-
+// RegisterEvents initializes marshaling/unmarshaling system.
+// All events defined for the Aggregate must be registered at startup.
 func (r *Repository[T, A]) RegisterEvents(evts ...Event[T]) error {
 	if r.registry == nil {
 		r.registry = make(map[string]reflect.Type)
@@ -50,10 +52,12 @@ func (r *Repository[T, A]) RegisterEvents(evts ...Event[T]) error {
 	return nil
 }
 
+// Subscribe to event notifications, returning unsubscriber
 func (r *Repository[T, A]) Subscribe(h func(n Notification[T, A])) (unsub func()) {
 	return r.notifier.Handle(h)
 }
 
+// instantiate event object for deserialization
 func (r *Repository[T, A]) instantiate(eventType string) (Event[T], bool) {
 	t, ok := r.registry[eventType]
 	if !ok {
@@ -63,8 +67,10 @@ func (r *Repository[T, A]) instantiate(eventType string) (Event[T], bool) {
 	return res, ok
 }
 
-func (es *Repository[T, A]) Load(ctx context.Context, id A) (*Aggregate[T, A], error) {
-	evts, err := es.GetEvents(ctx, id, 0, 0)
+// Load Aggregate with specified ID from the Repository at certain version.
+// If version is -1 then load its latest available version.
+func (es *Repository[T, A]) Load(ctx context.Context, id A, version int) (*Aggregate[T, A], error) {
+	evts, err := es.GetEvents(ctx, id, 0, version)
 	if err != nil {
 		return nil, fmt.Errorf("loading events for aggregate %v: %+v", id, err)
 	}
@@ -77,6 +83,7 @@ func (es *Repository[T, A]) Load(ctx context.Context, id A) (*Aggregate[T, A], e
 	return res, nil
 }
 
+// Save specified Aggregate and its Events. Event subscribers are notified on successful save.
 func (es *Repository[T, A]) Save(ctx context.Context, ag *Aggregate[T, A]) (rErr error) {
 	var notifications []Notification[T, A]
 	defer func() {
@@ -96,22 +103,26 @@ func (es *Repository[T, A]) Save(ctx context.Context, ag *Aggregate[T, A]) (rErr
 		if err != nil {
 			return err
 		}
+		t := reflect.TypeOf(evt).Name()
 		evtDTOs[i] = driver.Event[A]{
 			AggregateID:      id,
 			AggregateVersion: version,
-			Type:             reflect.TypeOf(evt).Name(),
+			Type:             t,
 			Payload:          data,
 		}
 		notifications = append(notifications, Notification[T, A]{
 			AggregateID:      id,
 			AggregateVersion: version,
-			Event:            evt,
+			Type:             t,
+			Payload:          evt,
 		})
 		version++
 	}
 	return es.Backend.Save(ctx, evtDTOs)
 }
 
+// GetEvents returns event range [fromVersion, toVersion] for Aggregate with specified ID.
+// If toVersion is -1, all available events with version greater or equal to fromVersion are returned.
 func (es *Repository[T, A]) GetEvents(ctx context.Context, id A, fromVersion, toVersion int) ([]Event[T], error) {
 	evtDTOs, err := es.Backend.Load(ctx, id, fromVersion, toVersion)
 	if err != nil {

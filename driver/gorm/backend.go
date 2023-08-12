@@ -65,8 +65,8 @@ func (b *Backend[A]) Load(ctx context.Context, id string, fromVersion, toVersion
 	if fromVersion != 0 {
 		q = q.Where(`aggregate_version >= ?`, fromVersion)
 	}
-	if toVersion != 0 {
-		q = q.Where(`aggregate_version < ?`, toVersion)
+	if toVersion >= 0 {
+		q = q.Where(`aggregate_version <= ?`, toVersion)
 	}
 	if err := q.Find(&evts).Error; err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-mixins/eventsource/driver"
@@ -13,9 +14,13 @@ import (
 var ErrTooManyRetries = errors.New("too many retries")
 
 type Service[T, A any] struct {
-	Repository   *Repository[T, A]
-	RetryTimeout time.Duration
-	MaxRetries   int
+	Repository   *Repository[T, A] // Repository implementation
+	RetryTimeout time.Duration     // Timeout to retry Commands on concurrency conflict. Defaults to 100ms.
+	MaxRetries   int               // Maximum retries on concurrency conflict. After that error is signalled.
+	ErrorHandler func(error)       // Specifies external handler for asynchronous errors.
+
+	handlers map[string]InternalRule[T]
+	once     sync.Once
 }
 
 // NewService provides service with string IDs
@@ -39,15 +44,16 @@ func (s *Service[T, A]) maxRetries() int {
 	return 10
 }
 
+// Execute the Command on Aggregate with specified ID and latest version available at the moment.
 func (s *Service[T, A]) Execute(ctx context.Context, id A, cmd Command[T]) (rErr error) {
 	var t T
 	for i := 0; i < s.maxRetries(); i++ {
-		ag, err := s.Repository.Load(ctx, id)
+		ag, err := s.Repository.Load(ctx, id, -1)
 		if err != nil {
 			return err
 		}
 		if err := ag.Execute(ctx, cmd); err != nil {
-			return fmt.Errorf("executing %T on %T with ID %v: %+v", cmd, t, id, err)
+			return fmt.Errorf("executing %T on %T with ID %v: %w", cmd, t, id, err)
 		} else if err := s.Repository.Save(ctx, ag); errors.Is(err, driver.ErrConcurrency) {
 			time.Sleep(s.retryTimeout())
 			continue

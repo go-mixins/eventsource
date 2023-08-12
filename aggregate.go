@@ -50,3 +50,7 @@ func (a *Aggregate[T, A]) Events() []Event[T] {
 func (a *Aggregate[T, A]) Version() int {
 	return a.version
 }
+
+func (a *Aggregate[T, A]) Data() T {
+	return a.data
+}

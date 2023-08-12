@@ -47,24 +47,29 @@ func main() {
 	if err := backend.Connect(true); err != nil {
 		panic(err)
 	}
-	es := eventsource.NewService[Patient](eventsource.NewRepository[Patient](backend.WithDebug()))
+	es := eventsource.NewService[Patient](eventsource.NewRepository[Patient](backend))
 	es.Repository.RegisterEvents(PatientCreated{}, PatientTransferred{}, PatientDischarged{})
 	es.Repository.Subscribe(func(n eventsource.Notification[Patient, string]) {
-		slog.InfoCtx(ctx, "signaled", "event", fmt.Sprintf("%T: %+v", n.Event, n.Event), "aggregate", n.AggregateID)
+		slog.InfoCtx(ctx, "signaled", "event", fmt.Sprintf("%T: %+v", n.Payload, n.Payload), "aggregate", n.AggregateID)
 	})
+	es.Handle(
+		eventsource.Rule(func(ctx context.Context, t Patient, e PatientCreated) ([]eventsource.Command[Patient], error) {
+			return []eventsource.Command[Patient]{
+				Transfer{NewWard: t.ward + 1},
+			}, nil
+		}),
+		eventsource.Rule(func(ctx context.Context, t Patient, e PatientTransferred) ([]eventsource.Command[Patient], error) {
+			return []eventsource.Command[Patient]{
+				Discharge{},
+			}, nil
+		}),
+	)
 	id := xid.New().String()
 	if err := es.Execute(ctx, id, Create{Ward: 1, Name: "Vasya", Age: 21}); err != nil {
 		slog.ErrorCtx(ctx, "execution failed", "error", err)
 		return
 	}
-	if err := es.Execute(ctx, id, Transfer{NewWard: 2}); err != nil {
-		slog.ErrorCtx(ctx, "execution failed", "error", err)
-		return
-	}
-	if err := es.Execute(ctx, id, Discharge{}); err != nil {
-		slog.ErrorCtx(ctx, "execution failed", "error", err)
-		return
-	}
+	time.Sleep(time.Second) // Wait for process to complete
 	if err := es.Execute(ctx, id, Transfer{NewWard: 3}); errors.Is(err, eventsource.ErrCommandAborted) {
 		slog.WarnCtx(ctx, "not tranferring discharged patient")
 	} else if err != nil {
