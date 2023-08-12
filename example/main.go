@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
-	"golang.org/x/exp/slog"
 	"gorm.io/driver/sqlite"
 
 	"github.com/rs/xid"
@@ -41,16 +41,16 @@ func main() {
 	slog.SetDefault(slog.New(logger))
 	gormBackend := &g.Backend{Driver: sqlite.Open("example.db")}
 	if err := gormBackend.Connect(); err != nil {
-		slog.ErrorCtx(ctx, "failed to connect DB", "error", err)
+		slog.ErrorContext(ctx, "failed to connect DB", "error", err)
 	}
 	backend := gorm.NewBackend[Patient, string](gormBackend)
 	if err := backend.Connect(true); err != nil {
 		panic(err)
 	}
-	es := eventsource.NewService[Patient](eventsource.NewRepository[Patient](backend))
+	es := eventsource.NewService[Patient](eventsource.NewRepository[Patient](backend.WithDebug()))
 	es.Repository.RegisterEvents(PatientCreated{}, PatientTransferred{}, PatientDischarged{})
 	es.Repository.Subscribe(func(n eventsource.Notification[Patient, string]) {
-		slog.InfoCtx(ctx, "signaled", "event", fmt.Sprintf("%T: %+v", n.Payload, n.Payload), "aggregate", n.AggregateID)
+		slog.InfoContext(ctx, "signaled", "event", fmt.Sprintf("%T: %+v", n.Payload, n.Payload), "aggregate", n.AggregateID)
 	})
 	es.Handle(
 		eventsource.Rule(func(ctx context.Context, t Patient, e PatientCreated) ([]eventsource.Command[Patient], error) {
@@ -66,14 +66,14 @@ func main() {
 	)
 	id := xid.New().String()
 	if err := es.Execute(ctx, id, Create{Ward: 1, Name: "Vasya", Age: 21}); err != nil {
-		slog.ErrorCtx(ctx, "execution failed", "error", err)
+		slog.ErrorContext(ctx, "execution failed", "error", err)
 		return
 	}
 	time.Sleep(time.Second) // Wait for process to complete
 	if err := es.Execute(ctx, id, Transfer{NewWard: 3}); errors.Is(err, eventsource.ErrCommandAborted) {
-		slog.WarnCtx(ctx, "not tranferring discharged patient")
+		slog.WarnContext(ctx, "not tranferring discharged patient")
 	} else if err != nil {
-		slog.ErrorCtx(ctx, "execution failed", "error", err)
+		slog.ErrorContext(ctx, "execution failed", "error", err)
 	}
 	time.Sleep(time.Second)
 }
