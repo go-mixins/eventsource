@@ -83,7 +83,7 @@ func (b *Backend[A]) Load(ctx context.Context, id string, fromVersion, toVersion
 	return res, nil
 }
 
-func (b *Backend[A]) Save(ctx context.Context, events []driver.Event[A]) (rErr error) {
+func (b *Backend[A]) Save(ctx context.Context, events []driver.Event[A], cb func() error) (rErr error) {
 	tx := b.WithContext(ctx).Begin()
 	defer func() {
 		rErr = tx.End(rErr)
@@ -102,5 +102,5 @@ func (b *Backend[A]) Save(ctx context.Context, events []driver.Event[A]) (rErr e
 			return fmt.Errorf("saving event to database: %+v", err)
 		}
 	}
-	return nil
+	return cb()
 }
