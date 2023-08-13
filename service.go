@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -18,6 +19,7 @@ type Service[T, A any] struct {
 	RetryTimeout time.Duration     // Timeout to retry Commands on concurrency conflict. Defaults to 100ms.
 	MaxRetries   int               // Maximum retries on concurrency conflict. After that error is signalled.
 	ErrorHandler func(error)       // Specifies external handler for asynchronous errors.
+	Logger       *slog.Logger
 
 	handlers map[string]InternalRule[T]
 	once     sync.Once
@@ -42,6 +44,13 @@ func (s *Service[T, A]) maxRetries() int {
 		return s.MaxRetries
 	}
 	return 10
+}
+
+func (s *Service[T, A]) logger() *slog.Logger {
+	if s.Logger != nil {
+		return s.Logger
+	}
+	return slog.Default()
 }
 
 // Execute the Command on Aggregate with specified ID and latest version available at the moment.
