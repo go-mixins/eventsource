@@ -2,8 +2,12 @@ package eventsource
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
+
+	"github.com/go-mixins/eventsource/driver"
 )
 
 // InternalRule is an intenal representation of Rule function.
@@ -27,46 +31,59 @@ func Rule[T any, E Event[T]](f func(context.Context, T, E) ([]Command[T], error)
 // Handle registers Rule for the Aggregate. The set of such rules
 // manages Aggregate states based on Events similarly to finite state machine.
 func (s *Service[T, A]) Handle(rules ...InternalRule[T]) error {
-	s.once.Do(func() {
-		s.Repository.notifier.Handle(s.processNotification)
-	})
-	for _, r := range rules {
-		if r.t.Kind() == reflect.Pointer {
-			return fmt.Errorf("requred non-pointer type for %s", r.t.Name())
+	for i, r := range rules {
+		if r.t.Kind() != reflect.Pointer {
+			return fmt.Errorf("rule %d: need pointer to %s in parameter", i, r.t.Name())
 		}
 		if s.handlers == nil {
 			s.handlers = make(map[string]InternalRule[T])
 		}
-		if _, ok := s.handlers[r.t.Name()]; ok {
-			return fmt.Errorf("event for %s is already handled", r.t.Name())
+		key := r.t.Elem().Name()
+		if _, ok := s.handlers[key]; ok {
+			return fmt.Errorf("event for %s is already handled", key)
 		}
-		s.handlers[r.t.Name()] = r
+		s.handlers[key] = r
 	}
 	return nil
 }
 
-func (s *Service[T, A]) processNotification(evt Notification[T, A]) {
-	ctx := context.TODO()
-	ag, err := s.Repository.Load(ctx, evt.AggregateID, -1)
+func (s *Service[T, A]) ProcessNotification(ctx context.Context, dto driver.Event[A]) (rErr error) {
+	defer func() {
+		attrs := []any{
+			slog.String("event_type", fmt.Sprintf("%s", dto.Type)),
+			slog.String("aggregate_id", fmt.Sprintf("%v", dto.AggregateID)),
+			slog.String("aggregate_version", fmt.Sprintf("%d", dto.AggregateVersion)),
+		}
+		if rErr != nil {
+			attrs = append(attrs, slog.String("err", rErr.Error()))
+		}
+		s.logger().With(attrs...).DebugContext(ctx, "processed event")
+	}()
+	ag, err := s.Repository.Load(ctx, dto.AggregateID, -1)
 	if err != nil {
-		s.signalError(fmt.Errorf("processing event %T: %w", evt.Payload, err))
-		return
+		return fmt.Errorf("loading aggregate: %w", err)
 	}
-	h, ok := s.handlers[evt.Type]
+	h, ok := s.handlers[dto.Type]
 	if !ok {
-		return
+		return nil
 	}
-	cmds, err := h.f(ctx, ag.data, evt.Payload)
+	evt, err := s.Repository.toEvent(dto)
 	if err != nil {
-		s.signalError(fmt.Errorf("handling event %T: %w", evt.Payload, err))
-		return
+		return fmt.Errorf("receiving event %s: %+v", dto.Type, err)
+	}
+	cmds, err := h.f(ctx, ag.data, evt)
+	if err != nil {
+		return fmt.Errorf("handling event %s: %w", dto.Type, err)
 	}
 	for _, c := range cmds {
-		if err := s.Execute(context.TODO(), evt.AggregateID, c); err != nil {
-			s.signalError(fmt.Errorf("executing command %T for event %T: %w", c, evt.Payload, err))
-			return
+		if err := s.Execute(context.TODO(), dto.AggregateID, c); errors.Is(err, ErrCommandAborted) {
+			s.logger().Debug("command skipped", "aggregateID", dto.AggregateID, "command", fmt.Sprintf("%T", c))
+			continue
+		} else if err != nil {
+			return fmt.Errorf("executing command %T for event %s: %w", c, dto.Type, err)
 		}
 	}
+	return nil
 }
 
 func (s *Service[T, A]) signalError(err error) {
