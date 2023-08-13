@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/andviro/go-events"
+	"github.com/go-mixins/pubsub"
+
 	"github.com/go-mixins/eventsource/driver"
 )
 
@@ -15,25 +16,18 @@ var ErrUnknownEventType = errors.New("unknown event type")
 // Repository stores and retrieves events for Aggregates of type T.
 // It also notifies subscribers on aggregate-related events.
 type Repository[T, A any] struct {
-	Backend driver.Backend[A]
+	Backend  driver.Backend[A]
+	EventBus pubsub.Topic[driver.Event[A]]
 
-	notifier events.Event[Notification[T, A]]
 	registry map[string]reflect.Type
 }
 
 // NewRepository creates Repository with most common case: string IDs
-func NewRepository[T any](b driver.Backend[string]) *Repository[T, string] {
+func NewRepository[T any](b driver.Backend[string], topic pubsub.Topic[driver.Event[string]]) *Repository[T, string] {
 	return &Repository[T, string]{
-		Backend: b,
+		Backend:  b,
+		EventBus: topic,
 	}
-}
-
-// Notification is sent to event subscribers
-type Notification[T, A any] struct {
-	AggregateID      A
-	AggregateVersion int
-	Type             string
-	Payload          Event[T]
 }
 
 // RegisterEvents initializes marshaling/unmarshaling system.
@@ -50,11 +44,6 @@ func (r *Repository[T, A]) RegisterEvents(evts ...Event[T]) error {
 		r.registry[t.Name()] = t
 	}
 	return nil
-}
-
-// Subscribe to event notifications, returning unsubscriber
-func (r *Repository[T, A]) Subscribe(h func(n Notification[T, A])) (unsub func()) {
-	return r.notifier.Handle(h)
 }
 
 // instantiate event object for deserialization
@@ -85,19 +74,9 @@ func (es *Repository[T, A]) Load(ctx context.Context, id A, version int) (*Aggre
 
 // Save specified Aggregate and its Events. Event subscribers are notified on successful save.
 func (es *Repository[T, A]) Save(ctx context.Context, ag *Aggregate[T, A]) (rErr error) {
-	var notifications []Notification[T, A]
-	defer func() {
-		if rErr != nil {
-			return
-		}
-		for _, n := range notifications {
-			es.notifier.Invoke(n)
-		}
-	}()
 	evts := ag.Events()
 	evtDTOs := make([]driver.Event[A], len(evts))
 	id, version := ag.ID(), ag.Version()
-
 	for i, evt := range evts {
 		data, err := es.Backend.Codec().Marshal(evt)
 		if err != nil {
@@ -110,15 +89,27 @@ func (es *Repository[T, A]) Save(ctx context.Context, ag *Aggregate[T, A]) (rErr
 			Type:             t,
 			Payload:          data,
 		}
-		notifications = append(notifications, Notification[T, A]{
-			AggregateID:      id,
-			AggregateVersion: version,
-			Type:             t,
-			Payload:          evt,
-		})
 		version++
 	}
-	return es.Backend.Save(ctx, evtDTOs)
+	return es.Backend.Save(ctx, evtDTOs, func() error {
+		for _, n := range evtDTOs {
+			if err := es.EventBus.Send(ctx, n); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (es *Repository[T, A]) toEvent(e driver.Event[A]) (Event[T], error) {
+	evt, ok := es.instantiate(e.Type)
+	if !ok {
+		return nil, fmt.Errorf("intantiating event %s: %w", e.Type, ErrUnknownEventType)
+	}
+	if err := es.Backend.Codec().Unmarshal(e.Payload, &evt); err != nil {
+		return nil, fmt.Errorf("unmarshaling %s: %+v", e.Type, err)
+	}
+	return evt, nil
 }
 
 // GetEvents returns event range [fromVersion, toVersion] for Aggregate with specified ID.
@@ -130,12 +121,9 @@ func (es *Repository[T, A]) GetEvents(ctx context.Context, id A, fromVersion, to
 	}
 	evts := make([]Event[T], len(evtDTOs))
 	for i, e := range evtDTOs {
-		evt, ok := es.instantiate(e.Type)
-		if !ok {
-			return nil, fmt.Errorf("intantiating event %s: %w", e.Type, ErrUnknownEventType)
-		}
-		if err := es.Backend.Codec().Unmarshal(e.Payload, &evt); err != nil {
-			return nil, err
+		evt, err := es.toEvent(e)
+		if err != nil {
+			return nil, fmt.Errorf("converting DTO to real event: %w", err)
 		}
 		evts[i] = evt
 	}
