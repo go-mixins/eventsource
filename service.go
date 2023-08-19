@@ -53,6 +53,8 @@ func (s *Service[T, A]) logger() *slog.Logger {
 	return slog.Default()
 }
 
+var ErrRetryCommand = errors.New("retry command")
+
 // Execute the Command on Aggregate with specified ID and latest version available at the moment.
 func (s *Service[T, A]) Execute(ctx context.Context, id A, cmd Command[T]) (rErr error) {
 	var t T
@@ -61,9 +63,13 @@ func (s *Service[T, A]) Execute(ctx context.Context, id A, cmd Command[T]) (rErr
 		if err != nil {
 			return err
 		}
-		if err := ag.Execute(ctx, cmd); err != nil {
+		if err := ag.Execute(ctx, cmd); errors.Is(err, ErrRetryCommand) {
+			time.Sleep(s.retryTimeout())
+			continue
+		} else if err != nil {
 			return fmt.Errorf("executing %T on %T with ID %v: %w", cmd, t, id, err)
-		} else if err := s.Repository.Save(ctx, ag); errors.Is(err, driver.ErrConcurrency) {
+		}
+		if err := s.Repository.Save(ctx, ag); errors.Is(err, driver.ErrConcurrency) {
 			time.Sleep(s.retryTimeout())
 			continue
 		} else if err != nil {
